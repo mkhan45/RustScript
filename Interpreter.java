@@ -374,6 +374,8 @@ enum TokenTy {
 
     Caret, Dollar,
 
+    Fn, Arrow,
+
     EOF,
 }
 
@@ -460,6 +462,7 @@ class Tokenizer {
             case "then" -> addToken(new Token(TokenTy.Then, lexeme));
             case "else" -> addToken(new Token(TokenTy.Else, lexeme));
             case "let" -> addToken(new Token(TokenTy.Let, lexeme));
+            case "fn" -> addToken(new Token(TokenTy.Fn, lexeme));
             default -> addToken(new Token(TokenTy.Ident, lexeme));
         }
     }
@@ -496,6 +499,8 @@ class Tokenizer {
             case '=' -> {
                 if (expect('=')) {
                     addToken(TokenTy.EQ, "==");
+                } else if (expect('>')) {
+                    addToken(TokenTy.Arrow, "=>");
                 } else {
                     addToken(TokenTy.Assign, "=");
                 }
@@ -661,6 +666,29 @@ class Parser {
         return new Expr.AssignExpr(ident.lexeme, rhs);
     }
 
+    private Expr parseLambdaExpr() throws Exception {
+        assertNext(TokenTy.LParen);
+
+        ArrayList<String> argNames = new ArrayList<>();
+
+        if (peek().ty != TokenTy.RParen) {
+            do {
+                Token nx = eat();
+                if (nx.ty != TokenTy.Ident) {
+                    throw new Exception(String.format("Unexpected %s", nx.toString()));
+                }
+                argNames.add(nx.lexeme);
+            } while (expect(TokenTy.Comma));
+        }
+        assertNext(TokenTy.RParen);
+
+        assertNext(TokenTy.Arrow);
+
+        Expr expr = exprBP(0);
+
+        return new Expr.AtomicExpr(new Atom.Lambda(expr, argNames));
+    }
+
     private Expr exprBP(int minBP) throws Exception {
         Token nx = eat();
         Expr lhs = switch (nx.ty) {
@@ -674,6 +702,7 @@ class Parser {
                 }
             }
             case Let -> parseLetExpr();
+            case Fn -> parseLambdaExpr();
             case If -> parseIfExpr();
             case LBracket -> parseList();
             case LParen -> {
@@ -756,83 +785,14 @@ public class Interpreter {
     }
 
     public static void main(String[] args) throws Exception {
-        // System.out.println(Parser.parseExpr("5").eval(new HashMap<String,
-        // Atom>()).toString());
-        // System.out.println(Parser.parseExpr("5 + 12 * 3 - 2").eval(new
-        // HashMap<String, Atom>()).toString());
-        // System.out.println(Parser.parseExpr("(5 + 12) * 3 - 2").eval(new
-        // HashMap<String, Atom>()).toString());
-        // System.out.println(Parser.parseExpr("(5 + 12) * (3 - 2)").eval(new
-        // HashMap<String, Atom>()).toString());
-        // System.out.println(Parser.parseExpr("(5 + 12) * (3 - 2)").eval(new
-        // HashMap<String, Atom>()).toString());
-        // System.out.println(Parser.parseExpr("(5 + -12) * (3 - -2)").eval(new
-        // HashMap<String, Atom>()).toString());
-
-        // {
-        // String input = "if (1 < 2) then (2) else (3)";
-        // Expr expr = Parser.parseExpr(input);
-        // System.out.println(expr.toString());
-
-        // Atom res = expr.eval(new HashMap<String, Atom>());
-        // System.out.println(res.toString());
-        // }
-
-        // {
-        // Expr fib = Parser.parseExpr("if (n < 2) then (1) else (fib(n - 1) + fib(n -
-        // 2))");
-        // HashMap<String, Atom> vars = new HashMap<>();
-        // ArrayList<String> varNames = new ArrayList<String>(0);
-        // varNames.add("n");
-        // vars.put("fib", new Atom.Lambda(fib, varNames));
-        // System.out.println(Parser.parseExpr("fib(10)").eval(vars).toString());
-        // }
-
-        // {
-        // System.out.println(Parser.parseExpr("[1, 2, 10, 15]").eval(new
-        // HashMap<String, Atom>()).toString());
-        // System.out
-        // .println(Parser.parseExpr("[1, 10, 15] + [2, 4, 6]").eval(new HashMap<String,
-        // Atom>()).toString());
-        // System.out.println(Parser.parseExpr("^[5, 2, 1]").eval(new HashMap<String,
-        // Atom>()).toString());
-        // System.out.println(Parser.parseExpr("$[5, 2, 1]").eval(new HashMap<String,
-        // Atom>()).toString());
-        // }
-
-        // {
-        // Expr fib = Parser.parseExpr("if (n < 2) then (1) else (fib(n - 1) + fib(n -
-        // 2))");
-        // Expr fmap = Parser.parseExpr("if (ls) then ([f(^ls)] + fmap(f, $ls)) else
-        // ([])");
-        // Expr range = Parser.parseExpr("if (a == b - 1) then ([a]) else ([a] + range(a
-        // + 1, b))");
-
-        // HashMap<String, Atom> vars = new HashMap<>();
-
-        // ArrayList<String> fmapArgs = new ArrayList<String>(2);
-        // fmapArgs.add("f");
-        // fmapArgs.add("ls");
-        // vars.put("fmap", new Atom.Lambda(fmap, fmapArgs));
-
-        // ArrayList<String> fibArgs = new ArrayList<String>(1);
-        // fibArgs.add("n");
-        // vars.put("fib", new Atom.Lambda(fib, fibArgs));
-
-        // ArrayList<String> rangeArgs = new ArrayList<String>(1);
-        // rangeArgs.add("a");
-        // rangeArgs.add("b");
-        // vars.put("range", new Atom.Lambda(range, rangeArgs));
-
-        // System.out.println(Parser.parseExpr("fmap(fib, range(0,
-        // 15))").eval(vars).toString());
-        // }
-
         Interpreter i = new Interpreter();
         i.execute("5 + 12 * 3 - 2");
         i.execute("(5 + -12) * (3 - -2)");
 
         i.execute("let x = 5");
         i.execute("x");
+
+        i.execute("let fib = fn (n) => if (n < 2) then (1) else (fib(n - 1) + fib(n - 2))");
+        i.execute("fib(10)");
     }
 }
