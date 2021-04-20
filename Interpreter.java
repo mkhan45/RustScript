@@ -381,7 +381,7 @@ abstract class Expr {
         }
 
         public String toString() {
-            return String.format("%s = %s", lhs, rhs.toString());
+            return String.format("let %s = %s", lhs, rhs.toString());
         }
     }
 }
@@ -513,7 +513,6 @@ class Tokenizer {
     }
 
     private void scanIdent() {
-        position -= 1;
         int start = position;
         while (!isFinished() && (Character.isAlphabetic(peek()) || Character.isDigit(peek()) || peek() == '_')) {
             eat();
@@ -534,7 +533,6 @@ class Tokenizer {
     }
 
     private void scanNumber() {
-        position -= 1;
         int start = position;
         while (!isFinished() && Character.isDigit(peek())) {
             eat();
@@ -547,8 +545,7 @@ class Tokenizer {
     private void addNextToken() throws Exception {
         char c = eat();
         switch (c) {
-            case ' ' -> {
-            }
+            case ' ' -> addNextToken();
             case '(' -> addToken(TokenTy.LParen, c);
             case ')' -> addToken(TokenTy.RParen, c);
             case '[' -> addToken(TokenTy.LBracket, c);
@@ -581,8 +578,10 @@ class Tokenizer {
             }
             default -> {
                 if (Character.isAlphabetic(c)) {
+                    position -= 1;
                     scanIdent();
                 } else if (Character.isDigit(c)) {
+                    position -= 1;
                     scanNumber();
                 } else {
                     throw new Exception(String.format("Unexpected character: %c", c));
@@ -599,6 +598,132 @@ class Tokenizer {
         }
 
         return t.output;
+    }
+
+    public static void testTokenizer() throws Exception {
+        {
+            // tests constructor and isFinished
+            var t = new Tokenizer("");
+            assert t.isFinished();
+        }
+
+        {
+            // tests scanIdent
+
+            // a non-keyword identifier
+            var t0 = new Tokenizer("valid_identifier");
+            t0.scanIdent();
+            assert t0.output.get(0).ty == TokenTy.Ident;
+            assert t0.output.get(0).lexeme.equals("valid_identifier");
+
+            // keywords
+            String keywords = "if then else let fn for in";
+            String[] keywordLS = keywords.split(" ");
+            TokenTy[] kwTokens = { TokenTy.If, TokenTy.Then, TokenTy.Else, TokenTy.Let, TokenTy.Fn, TokenTy.For,
+                    TokenTy.In };
+
+            for (int i = 0; i < keywordLS.length; i += 1) {
+                var t1 = new Tokenizer(keywordLS[i]);
+                t1.scanIdent();
+
+                Token t = t1.output.get(0);
+
+                assert t.ty == kwTokens[i];
+                assert t.lexeme.equals(keywordLS[i]);
+            }
+        }
+
+        {
+            // tests scanNumber
+            String numbers = "5 10 20 30";
+            String[] numberLS = numbers.split(" ");
+
+            for (int i = 0; i < numberLS.length; i += 1) {
+                var t1 = new Tokenizer(numberLS[i]);
+                t1.scanNumber();
+
+                Token t = t1.output.get(0);
+
+                assert t.ty == TokenTy.Number;
+                assert t.lexeme.equals(numberLS[i]);
+            }
+        }
+
+        {
+            // tests addNextToken
+            String input = "for x in [10..12] 15 let";
+
+            Tokenizer t = new Tokenizer(input);
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.For;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("for");
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.Ident;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("x");
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.In;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("in");
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.LBracket;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("[");
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.Number;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("10");
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.DotDot;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("..");
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.Number;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("12");
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.RBracket;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("]");
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.Number;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("15");
+
+            t.addNextToken();
+            assert t.output.get(t.output.size() - 1).ty == TokenTy.Let;
+            assert t.output.get(t.output.size() - 1).lexeme.equals("let");
+        }
+
+        {
+            // tests tokenize()
+            ArrayList<Token> tokens = tokenize("for x in [0..15]");
+
+            assert tokens.get(0).ty == TokenTy.For;
+            assert tokens.get(0).lexeme.equals("for");
+
+            assert tokens.get(1).ty == TokenTy.Ident;
+            assert tokens.get(1).lexeme.equals("x");
+
+            assert tokens.get(2).ty == TokenTy.In;
+            assert tokens.get(2).lexeme.equals("in");
+
+            assert tokens.get(3).ty == TokenTy.LBracket;
+            assert tokens.get(3).lexeme.equals("[");
+
+            assert tokens.get(4).ty == TokenTy.Number;
+            assert tokens.get(4).lexeme.equals("0");
+
+            assert tokens.get(5).ty == TokenTy.DotDot;
+            assert tokens.get(5).lexeme.equals("..");
+
+            assert tokens.get(6).ty == TokenTy.Number;
+            assert tokens.get(6).lexeme.equals("15");
+
+            assert tokens.get(7).ty == TokenTy.RBracket;
+            assert tokens.get(7).lexeme.equals("]");
+        }
     }
 }
 
@@ -764,9 +889,6 @@ class Parser {
                     while (expect(TokenTy.Comma)) {
                         out.add(exprBP(0));
                     }
-                    // do {
-                    // out.add(exprBP(0));
-                    // } while (expect(TokenTy.Comma));
                 }
 
                 assertNext(TokenTy.RBracket);
@@ -903,6 +1025,52 @@ class Parser {
 
         return p.exprBP(0);
     }
+
+    public static void testParser() throws Exception {
+        // Testing parser methods individually isn't actually possible since they're
+        // mutually recursive.
+        //
+        // the expression parsers individually expect to come after the first token has
+        // been parsed, which is why they're each missing a token.
+
+        {
+            // tests parseIfExpr
+            ArrayList<Token> tokens = Tokenizer.tokenize("(1) then (2) else (5)");
+            Parser p = new Parser(tokens);
+            Expr.IfExpr expr = (Expr.IfExpr) p.parseIfExpr();
+            assert expr.toString().equals("if (1) then (2) else (5)");
+        }
+
+        {
+            // tests parseList
+            ArrayList<Token> tokens = Tokenizer.tokenize("1, 3, 2, 4]");
+            Parser p = new Parser(tokens);
+            Expr.AtomicExpr expr = (Expr.AtomicExpr) p.parseList();
+            assert expr.toString().equals("[1, 3, 2, 4]");
+        }
+
+        {
+            // tests parseCallArgs
+            ArrayList<Token> tokens = Tokenizer.tokenize("(2, 4, 6, 8, fib)");
+            Parser p = new Parser(tokens);
+            ArrayList<Expr> out = p.parseCallArgs();
+            assert out.toString().equals("[2, 4, 6, 8, \"fib\"]");
+        }
+
+        {
+            // tests parseLetExpr
+            ArrayList<Token> tokens = Tokenizer.tokenize("x = 5");
+            Parser p = new Parser(tokens);
+            Expr.AssignExpr expr = (Expr.AssignExpr) p.parseLetExpr();
+            assert expr.toString().equals("let x = 5");
+        }
+
+        {
+            // tests arbitrary arithmetic expr with order of operations
+            Expr expr = parseExpr("x + 3 * 5 - 2 / 4");
+            assert expr.toString().equals("Sub, (Add, (\"x\", Mul, (3, 5)), Div, (2, 4))");
+        }
+    }
 }
 
 /**
@@ -942,34 +1110,76 @@ public class Interpreter {
     }
 
     public static void main(String[] args) throws Exception {
+        Tokenizer.testTokenizer();
+        Parser.testParser();
+
+        // Some full stack tests
+        //
+        // I use toString as a hash function to test for equality
+
         Interpreter i = new Interpreter();
-        i.execute("5 + 12 * 3 - 2");
-        i.execute("(5 + -12) * (3 - -2)");
 
-        i.execute("let x = 5");
-        i.execute("x");
+        Atom val1 = i.eval("5 + 12 * 3 - 2");
+        assert val1 instanceof Atom.Val;
+        assert ((Atom.Val) val1).val == 39;
 
-        i.execute("let fib = fn (n) => if (n < 2) then (1) else (fib(n - 1) + fib(n - 2))");
-        i.execute("fib(10)");
+        Atom val2 = i.eval("(5 + -12) * (3 - -2)");
+        assert val2 instanceof Atom.Val;
+        assert ((Atom.Val) val2).val == -35;
 
-        i.execute("range(0, 15)");
-        i.execute("range(5, 25)");
+        Atom val3 = i.eval("let x = 5");
+        assert val3 instanceof Atom.Unit;
 
-        i.execute("let numbers = range(0, 20)");
+        Atom val4 = i.eval("x");
+        assert val4 instanceof Atom.Val;
+        assert ((Atom.Val) val4).val == 5;
 
-        i.execute("fmap(fn (n) => n * 2, numbers))");
-        i.execute("fmap(fn (n) => n % 2, numbers))");
+        i.eval("let fib = fn (n) => if (n < 2) then (1) else (fib(n - 1) + fib(n - 2))");
+        Atom val5 = i.eval("fib(10)");
+        assert val5 instanceof Atom.Val;
+        assert ((Atom.Val) val5).val == 89;
 
-        i.execute("filter(fn (n) => n % 2 == 0, numbers)");
+        Atom val6 = i.eval("range(5, 10)");
+        assert val6 instanceof Atom.List;
+        ArrayList<Expr> list1 = new ArrayList<>();
+        list1.add(new Expr.AtomicExpr(new Atom.Val(5)));
+        list1.add(new Expr.AtomicExpr(new Atom.Val(6)));
+        list1.add(new Expr.AtomicExpr(new Atom.Val(7)));
+        list1.add(new Expr.AtomicExpr(new Atom.Val(8)));
+        list1.add(new Expr.AtomicExpr(new Atom.Val(9)));
+        assert ((Atom.List) val6).list.toString().equals(list1.toString());
 
-        i.execute("fold(fn (acc, n) => acc + n, 0, [1..1000])");
-        i.execute("sum(range(1, 1000))");
-        i.execute("let fib_step = fn (ls) => [^$ls, ^ls + ^$ls]");
+        Atom val7 = i.eval("range(0, 20)");
+        Atom val8 = i.eval("[0..20]");
+        assert ((Atom.List) val7).list.toString().equals(((Atom.List) val8).list.toString());
 
-        i.execute("let efficient_fib = fn (n) => ^$fold(fib_step, [1, 1], range(0, n))");
-        i.execute("efficient_fib(30)");
+        Atom val9 = i.eval("fmap(fn (n) => n * 2, [0..3]))");
+        ArrayList<Expr> list2 = new ArrayList<>();
+        list2.add(new Expr.AtomicExpr(new Atom.Val(0)));
+        list2.add(new Expr.AtomicExpr(new Atom.Val(2)));
+        list2.add(new Expr.AtomicExpr(new Atom.Val(4)));
+        assert ((Atom.List) val9).list.toString().equals(list2.toString());
 
-        i.execute("[n * 2 for n in range(0, 10)]");
-        i.execute("[n * 2 for n in [0..10]]");
+        Atom val10 = i.eval("filter(fn (n) => n % 3 == 0, [0..10])");
+        ArrayList<Expr> list3 = new ArrayList<>();
+        list3.add(new Expr.AtomicExpr(new Atom.Val(0)));
+        list3.add(new Expr.AtomicExpr(new Atom.Val(3)));
+        list3.add(new Expr.AtomicExpr(new Atom.Val(6)));
+        list3.add(new Expr.AtomicExpr(new Atom.Val(9)));
+        assert ((Atom.List) val10).list.toString().equals(list3.toString());
+
+        Atom val11 = i.eval("fold(fn (acc, n) => acc + n, 0, [1..1000])");
+        Atom val12 = i.eval("sum(range(1, 1000))");
+
+        assert ((Atom.Val) val11).val == 499500;
+        assert ((Atom.Val) val11).val == ((Atom.Val) val12).val;
+
+        i.eval("let fib_step = fn (ls) => [^$ls, ^ls + ^$ls]");
+        i.eval("let efficient_fib = fn (n) => ^$fold(fib_step, [1, 1], [0..n])");
+        Atom val13 = i.eval("efficient_fib(30)");
+
+        assert ((Atom.Val) val13).val == 2178309;
+
+        System.out.println("All tests passed!");
     }
 }
