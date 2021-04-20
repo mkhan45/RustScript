@@ -192,7 +192,11 @@ abstract class Expr {
         Atom eval(HashMap<String, Atom> variables) throws Exception {
             if (val instanceof Atom.Ident) {
                 Atom.Ident v = (Atom.Ident) val;
-                return variables.get(v.name);
+                try {
+                    return variables.get(v.name);
+                } catch (Exception e) {
+                    throw new Exception(String.format("Tried to access nonexistent variable %s", v.name));
+                }
             } else if (val instanceof Atom.List) {
                 Atom.List ls = (Atom.List) val;
                 ArrayList<Expr> nls = new ArrayList<>();
@@ -463,7 +467,7 @@ class Tokenizer {
     private void scanIdent() {
         position -= 1;
         int start = position;
-        while (!isFinished() && (Character.isAlphabetic(peek()) || Character.isDigit(peek()))) {
+        while (!isFinished() && (Character.isAlphabetic(peek()) || Character.isDigit(peek()) || peek() == '_')) {
             eat();
         }
 
@@ -788,9 +792,12 @@ public class Interpreter {
 
         // small standard library
         execute("let range = fn(a, b) => if (a == b - 1) then ([a]) else ([a] + range(a + 1, b))");
+        execute("let range_to = fn(a, b) => if (a == b - 1) then ([a]) else ([a] + range(a + 1, b))");
         execute("let fmap = fn(f, ls) => if (ls) then ([f(^ls)] + fmap(f, $ls)) else ([])");
         execute("let filter = fn(f, ls) => if (ls) then (if (f(^ls)) then ([^ls] + filter(f, $ls)) else (filter(f, $ls))) else ([])");
         execute("let fold = fn(f, acc, ls) => if (ls) then (fold(f, f(acc, ^ls), $ls)) else (acc)");
+        execute("let sum = fn(ls) => fold(fn (a, b) => a + b, 0, ls)");
+        execute("let product = fn(ls) => fold(fn (a, b) => a * b, 0, ls)");
     }
 
     public Atom eval(String expr) throws Exception {
@@ -826,8 +833,10 @@ public class Interpreter {
         i.execute("filter(fn (n) => n % 2 == 0, numbers)");
 
         i.execute("fold(fn (acc, n) => acc + n, 0, range(1, 1000))");
-        i.execute("let fibstep = fn (ls) => [^$ls, ^ls + ^$ls]");
-        i.execute("let efficientfib = fn (n) => ^$fold(fibstep, [1, 1], range(0, n))");
-        i.execute("efficientfib(30)");
+        i.execute("sum(range(1, 1000))");
+        i.execute("let fib_step = fn (ls) => [^$ls, ^ls + ^$ls]");
+
+        i.execute("let efficient_fib = fn (n) => ^$fold(fib_step, [1, 1], range(0, n))");
+        i.execute("efficient_fib(30)");
     }
 }
