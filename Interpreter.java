@@ -392,6 +392,8 @@ enum TokenTy {
 
     Fn, Arrow,
 
+    For, In, DotDot,
+
     EOF,
 }
 
@@ -479,6 +481,8 @@ class Tokenizer {
             case "else" -> addToken(new Token(TokenTy.Else, lexeme));
             case "let" -> addToken(new Token(TokenTy.Let, lexeme));
             case "fn" -> addToken(new Token(TokenTy.Fn, lexeme));
+            case "for" -> addToken(new Token(TokenTy.For, lexeme));
+            case "in" -> addToken(new Token(TokenTy.In, lexeme));
             default -> addToken(new Token(TokenTy.Ident, lexeme));
         }
     }
@@ -513,6 +517,13 @@ class Tokenizer {
             case ',' -> addToken(TokenTy.Comma, c);
             case '^' -> addToken(TokenTy.Caret, c);
             case '$' -> addToken(TokenTy.Dollar, c);
+            case '.' -> {
+                if (expect('.')) {
+                    addToken(TokenTy.DotDot, "..");
+                } else {
+                    throw new Exception("Found a single '.', did you mean '..'?");
+                }
+            }
             case '=' -> {
                 if (expect('=')) {
                     addToken(TokenTy.EQ, "==");
@@ -643,17 +654,67 @@ class Parser {
     }
 
     private Expr parseList() throws Exception {
-        ArrayList<Expr> out = new ArrayList<>();
-
         if (peek().ty != TokenTy.RBracket) {
-            do {
-                out.add(exprBP(0));
-            } while (expect(TokenTy.Comma));
+            Expr first = exprBP(0);
+
+            if (peek().ty == TokenTy.For) {
+                // list comprehension
+                assertNext(TokenTy.For);
+
+                Token ident = eat();
+                if (ident.ty != TokenTy.Ident) {
+                    throw new Exception("Invalid list comp, expected an identifier after 'for'.");
+                }
+
+                String name = ident.lexeme;
+
+                assertNext(TokenTy.In);
+
+                Expr list = exprBP(0);
+
+                ArrayList<String> argNames = new ArrayList<>();
+                argNames.add(name);
+                Atom lambda = new Atom.Lambda(first, argNames);
+
+                ArrayList<Expr> args = new ArrayList<>(2);
+                args.add(new Expr.AtomicExpr(lambda));
+                args.add(list);
+
+                assertNext(TokenTy.RBracket);
+                return new Expr.LambdaCall("fmap", args);
+            } else if (peek().ty == TokenTy.DotDot) {
+                // range literal
+                assertNext(TokenTy.DotDot);
+
+                Expr end = exprBP(0);
+
+                ArrayList<Expr> args = new ArrayList<>(2);
+                args.add(first);
+                args.add(end);
+
+                assertNext(TokenTy.RBracket);
+                return new Expr.LambdaCall("range", args);
+            } else {
+                // array literal
+                ArrayList<Expr> out = new ArrayList<>();
+                out.add(first);
+
+                if (peek().ty != TokenTy.RBracket) {
+                    while (expect(TokenTy.Comma)) {
+                        out.add(exprBP(0));
+                    }
+                    // do {
+                    // out.add(exprBP(0));
+                    // } while (expect(TokenTy.Comma));
+                }
+
+                assertNext(TokenTy.RBracket);
+                return new Expr.AtomicExpr(new Atom.List(out));
+            }
+        } else {
+            assertNext(TokenTy.RBracket);
+            return new Expr.AtomicExpr(new Atom.List(new ArrayList<>()));
         }
-
-        assertNext(TokenTy.RBracket);
-
-        return new Expr.AtomicExpr(new Atom.List(out));
     }
 
     private ArrayList<Expr> parseCallArgs() throws Exception {
@@ -739,7 +800,7 @@ class Parser {
                 Expr rhs = exprBP(bp.right);
                 yield new Expr.PrefixExpr(op, rhs);
             }
-            default -> throw new Exception(String.format("Bad lhs token: %s", nx.toString()));
+            default -> throw new Exception(String.format("Expected an expression, found: %s", nx.toString()));
         };
 
         for (;;) {
@@ -753,8 +814,7 @@ class Parser {
                 case LT -> BinOp.LT;
                 case GT -> BinOp.GT;
                 case EQ -> BinOp.EQ;
-                case EOF, RParen, Then, Else, Comma, RBracket -> null;
-                default -> throw new Exception(String.format("Not a binary operator: %s", opToken.toString()));
+                default -> null;
             };
 
             if (op == null)
@@ -832,11 +892,14 @@ public class Interpreter {
 
         i.execute("filter(fn (n) => n % 2 == 0, numbers)");
 
-        i.execute("fold(fn (acc, n) => acc + n, 0, range(1, 1000))");
+        i.execute("fold(fn (acc, n) => acc + n, 0, [1..1000])");
         i.execute("sum(range(1, 1000))");
         i.execute("let fib_step = fn (ls) => [^$ls, ^ls + ^$ls]");
 
         i.execute("let efficient_fib = fn (n) => ^$fold(fib_step, [1, 1], range(0, n))");
         i.execute("efficient_fib(30)");
+
+        i.execute("[n * 2 for n in range(0, 10)]");
+        i.execute("[n * 2 for n in [0..10]]");
     }
 }
