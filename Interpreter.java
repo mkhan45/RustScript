@@ -27,10 +27,14 @@ abstract class Atom {
     }
 
     public static class List extends Atom {
-        ArrayList<Integer> list;
+        ArrayList<Expr> list;
 
-        public List(ArrayList<Integer> list) {
+        public List(ArrayList<Expr> list) {
             this.list = list;
+        }
+
+        public String toString() {
+            return list.toString();
         }
     }
 
@@ -56,9 +60,27 @@ abstract class Atom {
         }
     }
 
+    public static class Unit extends Atom {
+
+        public Unit() {
+        }
+
+        public String toString() {
+            return String.format("()");
+        }
+    }
+
     public Atom add(Atom rhs) throws Exception {
         if ((this instanceof Val) && (rhs instanceof Val)) {
             return (Atom) new Val(((Val) this).val + ((Val) rhs).val);
+        } else if ((this instanceof List) && (rhs instanceof List)) {
+            List lArr = (List) this;
+            List rArr = (List) rhs;
+
+            List newList = new List(new ArrayList<Expr>());
+            newList.list.addAll(lArr.list);
+            newList.list.addAll(rArr.list);
+            return (Atom) newList;
         } else {
             throw new Exception("Badd");
         }
@@ -111,6 +133,46 @@ abstract class Atom {
             throw new Exception("Bad Cmp");
         }
     }
+
+    public Atom negate() throws Exception {
+        if (this instanceof Val) {
+            Val v = (Val) this;
+            return (Atom) new Val(-v.val);
+        } else {
+            throw new Exception("Bad Negate");
+        }
+    }
+
+    public Atom head(HashMap<String, Atom> variables) throws Exception {
+        if (this instanceof List) {
+            List ls = (List) this;
+            return (Atom) ls.list.get(0).eval(variables);
+        } else {
+            throw new Exception("Bad Head");
+        }
+    }
+
+    public Atom tail(HashMap<String, Atom> variables) throws Exception {
+        if (this instanceof List) {
+            List ls = (List) this;
+            ArrayList<Expr> nls = new ArrayList<>(ls.list.subList(1, ls.list.size()));
+            return (Atom) new List(nls);
+        } else {
+            throw new Exception("Bad Tail");
+        }
+    }
+
+    public boolean isTruthy() throws Exception {
+        if (this instanceof Bool) {
+            Bool v = (Bool) this;
+            return v.val;
+        } else if (this instanceof List) {
+            List ls = (List) this;
+            return !ls.list.isEmpty();
+        } else {
+            throw new Exception(String.format("Can't coerce %s to a boolean", this.toString()));
+        }
+    }
 }
 
 abstract class Expr {
@@ -123,6 +185,13 @@ abstract class Expr {
             if (val instanceof Atom.Ident) {
                 Atom.Ident v = (Atom.Ident) val;
                 return variables.get(v.name);
+            } else if (val instanceof Atom.List) {
+                Atom.List ls = (Atom.List) val;
+                ArrayList<Expr> nls = new ArrayList<>();
+                for (Expr expr : ls.list) {
+                    nls.add(new AtomicExpr(expr.eval(variables)));
+                }
+                return new Atom.List(nls);
             } else {
                 return val;
             }
@@ -134,6 +203,28 @@ abstract class Expr {
 
         public String toString() {
             return String.valueOf(val);
+        }
+    }
+
+    public static class PrefixExpr extends Expr {
+        PrefixOp op;
+        Expr rhs;
+
+        Atom eval(HashMap<String, Atom> variables) throws Exception {
+            return switch (op) {
+                case Negate -> rhs.eval(variables).negate();
+                case Head -> rhs.eval(variables).head(variables);
+                case Tail -> rhs.eval(variables).tail(variables);
+            };
+        }
+
+        public PrefixExpr(PrefixOp op, Expr rhs) {
+            this.op = op;
+            this.rhs = rhs;
+        }
+
+        public String toString() {
+            return String.format("%s (%s)", op.toString(), rhs.toString());
         }
     }
 
@@ -178,10 +269,7 @@ abstract class Expr {
 
         Atom eval(HashMap<String, Atom> variables) throws Exception {
             Atom condVal = cond.eval(variables);
-            if (!(condVal instanceof Atom.Bool)) {
-                throw new Exception("Attempted if statement on non-boolean value");
-            }
-            if (((Atom.Bool) condVal).val) {
+            if (condVal.isTruthy()) {
                 return lhs.eval(variables);
             } else {
                 return rhs.eval(variables);
@@ -223,15 +311,6 @@ abstract class Expr {
             return expr.eval(evaledVariables);
         }
 
-        // void resolve(HashMap<String, Atom> variables) throws Exception {
-        // HashMap<String, Expr> newVariables = new HashMap<>(variables.size());
-        // for (String key : variables.keySet()) {
-        // newVariables.put(key, new AtomicExpr(variables.get(key)));
-        // }
-        // newVariables.putAll(this.variables);
-        // this.variables = newVariables;
-        // }
-
         public LambdaCall(String name) {
             this.name = name;
         }
@@ -245,6 +324,25 @@ abstract class Expr {
             return String.format("%s(%s)", name, variables.toString());
         }
     }
+
+    public static class AssignExpr extends Expr {
+        String lhs;
+        Expr rhs;
+
+        Atom eval(HashMap<String, Atom> variables) throws Exception {
+            variables.put(lhs, rhs.eval(variables));
+            return new Atom.Unit();
+        }
+
+        public AssignExpr(String lhs, Expr rhs) {
+            this.lhs = lhs;
+            this.rhs = rhs;
+        }
+
+        public String toString() {
+            return String.format("%s = %s", lhs, rhs.toString());
+        }
+    }
 }
 
 enum BinOp {
@@ -253,8 +351,16 @@ enum BinOp {
     LT, GT, EQ,
 }
 
+enum PrefixOp {
+    Negate,
+
+    Head, Tail,
+}
+
 enum TokenTy {
     LParen, RParen,
+
+    LBracket, RBracket,
 
     Ident, Number,
 
@@ -264,7 +370,9 @@ enum TokenTy {
 
     If, Then, Else,
 
-    Assign, Comma,
+    Let, Assign, Comma,
+
+    Caret, Dollar,
 
     EOF,
 }
@@ -351,6 +459,7 @@ class Tokenizer {
             case "if" -> addToken(new Token(TokenTy.If, lexeme));
             case "then" -> addToken(new Token(TokenTy.Then, lexeme));
             case "else" -> addToken(new Token(TokenTy.Else, lexeme));
+            case "let" -> addToken(new Token(TokenTy.Let, lexeme));
             default -> addToken(new Token(TokenTy.Ident, lexeme));
         }
     }
@@ -369,14 +478,21 @@ class Tokenizer {
     private void addNextToken() throws Exception {
         char c = eat();
         switch (c) {
+            case ' ' -> {
+            }
             case '(' -> addToken(TokenTy.LParen, c);
             case ')' -> addToken(TokenTy.RParen, c);
+            case '[' -> addToken(TokenTy.LBracket, c);
+            case ']' -> addToken(TokenTy.RBracket, c);
             case '+' -> addToken(TokenTy.Add, c);
             case '-' -> addToken(TokenTy.Sub, c);
             case '*' -> addToken(TokenTy.Mul, c);
             case '/' -> addToken(TokenTy.Div, c);
             case '<' -> addToken(TokenTy.LT, c);
             case '>' -> addToken(TokenTy.GT, c);
+            case ',' -> addToken(TokenTy.Comma, c);
+            case '^' -> addToken(TokenTy.Caret, c);
+            case '$' -> addToken(TokenTy.Dollar, c);
             case '=' -> {
                 if (expect('=')) {
                     addToken(TokenTy.EQ, "==");
@@ -389,6 +505,8 @@ class Tokenizer {
                     scanIdent();
                 } else if (Character.isDigit(c)) {
                     scanNumber();
+                } else {
+                    throw new Exception(String.format("Unexpected character: %c", c));
                 }
             }
         };
@@ -432,6 +550,20 @@ class BindingPower {
     }
 }
 
+class PrefixBindingPower {
+    public int right;
+
+    public PrefixBindingPower(int right) {
+        this.right = right;
+    }
+
+    public PrefixBindingPower(PrefixOp op) throws Exception {
+        switch (op) {
+            case Negate, Head, Tail -> this.right = 10;
+        };
+    }
+}
+
 class Parser {
     int position;
     ArrayList<Token> tokens;
@@ -472,33 +604,61 @@ class Parser {
         }
     }
 
+    private void assertNext(TokenTy expected) throws Exception {
+        var nx = eat();
+        if (nx.ty != expected) {
+            throw new Exception(String.format("Expected %s, got %s", expected.toString(), nx.toString()));
+        }
+    }
+
     private Expr parseIfExpr() throws Exception {
-        expect(TokenTy.If);
         Expr cond = exprBP(0);
-        expect(TokenTy.Then);
+        assertNext(TokenTy.Then);
         Expr lhs = exprBP(0);
-        expect(TokenTy.Else);
+        assertNext(TokenTy.Else);
         Expr rhs = exprBP(0);
         return new Expr.IfExpr(cond, lhs, rhs);
     }
 
-    private ArrayList<Expr> parseCallArgs() throws Exception {
-        expect(TokenTy.LParen);
+    private Expr parseList() throws Exception {
         ArrayList<Expr> out = new ArrayList<>();
 
-        if (expect(TokenTy.RParen)) {
-            return out;
-        } else {
+        if (peek().ty != TokenTy.RBracket) {
             do {
                 out.add(exprBP(0));
             } while (expect(TokenTy.Comma));
         }
 
-        if (!expect(TokenTy.RParen)) {
-            throw new Exception("Expected RParen");
+        assertNext(TokenTy.RBracket);
+
+        return new Expr.AtomicExpr(new Atom.List(out));
+    }
+
+    private ArrayList<Expr> parseCallArgs() throws Exception {
+        assertNext(TokenTy.LParen);
+        ArrayList<Expr> out = new ArrayList<>();
+
+        if (peek().ty != TokenTy.RParen) {
+            do {
+                out.add(exprBP(0));
+            } while (expect(TokenTy.Comma));
         }
 
+        assertNext(TokenTy.RParen);
         return out;
+    }
+
+    private Expr parseLetExpr() throws Exception {
+        Token ident = eat();
+        if (ident.ty != TokenTy.Ident) {
+            throw new Exception("Invalid let expression");
+        }
+
+        assertNext(TokenTy.Assign);
+
+        Expr rhs = exprBP(0);
+
+        return new Expr.AssignExpr(ident.lexeme, rhs);
     }
 
     private Expr exprBP(int minBP) throws Exception {
@@ -513,11 +673,25 @@ class Parser {
                     yield new Expr.AtomicExpr(new Atom.Ident(nx.lexeme));
                 }
             }
+            case Let -> parseLetExpr();
             case If -> parseIfExpr();
+            case LBracket -> parseList();
             case LParen -> {
                 Expr temp = exprBP(0);
                 expect(TokenTy.RParen);
                 yield temp;
+            }
+            case Sub, Caret, Dollar -> {
+                PrefixOp op = switch (nx.ty) {
+                    case Sub -> PrefixOp.Negate;
+                    case Caret -> PrefixOp.Head;
+                    case Dollar -> PrefixOp.Tail;
+                    default -> throw new Exception("Unreachable hopefully");
+                };
+
+                PrefixBindingPower bp = new PrefixBindingPower(op);
+                Expr rhs = exprBP(bp.right);
+                yield new Expr.PrefixExpr(op, rhs);
             }
             default -> throw new Exception(String.format("Bad lhs token: %s", nx.toString()));
         };
@@ -532,7 +706,7 @@ class Parser {
                 case LT -> BinOp.LT;
                 case GT -> BinOp.GT;
                 case EQ -> BinOp.EQ;
-                case EOF, RParen, Then, Else -> null;
+                case EOF, RParen, Then, Else, Comma, RBracket -> null;
                 default -> throw new Exception(String.format("Not a binary operator: %s", opToken.toString()));
             };
 
@@ -564,29 +738,101 @@ class Parser {
 }
 
 public class Interpreter {
-    public static void main(String[] args) throws Exception {
-        System.out.println(Parser.parseExpr("5").eval(new HashMap<String, Atom>()).toString());
-        System.out.println(Parser.parseExpr("5 + 12 * 3 - 2").eval(new HashMap<String, Atom>()).toString());
-        System.out.println(Parser.parseExpr("(5 + 12) * 3 - 2").eval(new HashMap<String, Atom>()).toString());
-        System.out.println(Parser.parseExpr("(5 + 12) * (3 - 2)").eval(new HashMap<String, Atom>()).toString());
-        System.out.println(Parser.parseExpr("(5 + 12) * (3 - 2)").eval(new HashMap<String, Atom>()).toString());
+    HashMap<String, Atom> globals;
 
-        {
-            String input = "if (1 < 2) then (2) else (3)";
-            Expr expr = Parser.parseExpr(input);
-            System.out.println(expr.toString());
+    public Interpreter() {
+        globals = new HashMap<>();
+    }
 
-            Atom res = expr.eval(new HashMap<String, Atom>());
+    public Atom eval(String expr) throws Exception {
+        return Parser.parseExpr(expr).eval(globals);
+    }
+
+    public void execute(String expr) throws Exception {
+        Atom res = eval(expr);
+        if (!(res instanceof Atom.Unit)) {
             System.out.println(res.toString());
         }
+    }
 
-        {
-            Expr fib = Parser.parseExpr("if (n < 2) then (1) else (fib(n - 1) + fib(n - 2))");
-            HashMap<String, Atom> vars = new HashMap<>();
-            ArrayList<String> varNames = new ArrayList<String>(0);
-            varNames.add("n");
-            vars.put("fib", new Atom.Lambda(fib, varNames));
-            System.out.println(Parser.parseExpr("fib(10)").eval(vars).toString());
-        }
+    public static void main(String[] args) throws Exception {
+        // System.out.println(Parser.parseExpr("5").eval(new HashMap<String,
+        // Atom>()).toString());
+        // System.out.println(Parser.parseExpr("5 + 12 * 3 - 2").eval(new
+        // HashMap<String, Atom>()).toString());
+        // System.out.println(Parser.parseExpr("(5 + 12) * 3 - 2").eval(new
+        // HashMap<String, Atom>()).toString());
+        // System.out.println(Parser.parseExpr("(5 + 12) * (3 - 2)").eval(new
+        // HashMap<String, Atom>()).toString());
+        // System.out.println(Parser.parseExpr("(5 + 12) * (3 - 2)").eval(new
+        // HashMap<String, Atom>()).toString());
+        // System.out.println(Parser.parseExpr("(5 + -12) * (3 - -2)").eval(new
+        // HashMap<String, Atom>()).toString());
+
+        // {
+        // String input = "if (1 < 2) then (2) else (3)";
+        // Expr expr = Parser.parseExpr(input);
+        // System.out.println(expr.toString());
+
+        // Atom res = expr.eval(new HashMap<String, Atom>());
+        // System.out.println(res.toString());
+        // }
+
+        // {
+        // Expr fib = Parser.parseExpr("if (n < 2) then (1) else (fib(n - 1) + fib(n -
+        // 2))");
+        // HashMap<String, Atom> vars = new HashMap<>();
+        // ArrayList<String> varNames = new ArrayList<String>(0);
+        // varNames.add("n");
+        // vars.put("fib", new Atom.Lambda(fib, varNames));
+        // System.out.println(Parser.parseExpr("fib(10)").eval(vars).toString());
+        // }
+
+        // {
+        // System.out.println(Parser.parseExpr("[1, 2, 10, 15]").eval(new
+        // HashMap<String, Atom>()).toString());
+        // System.out
+        // .println(Parser.parseExpr("[1, 10, 15] + [2, 4, 6]").eval(new HashMap<String,
+        // Atom>()).toString());
+        // System.out.println(Parser.parseExpr("^[5, 2, 1]").eval(new HashMap<String,
+        // Atom>()).toString());
+        // System.out.println(Parser.parseExpr("$[5, 2, 1]").eval(new HashMap<String,
+        // Atom>()).toString());
+        // }
+
+        // {
+        // Expr fib = Parser.parseExpr("if (n < 2) then (1) else (fib(n - 1) + fib(n -
+        // 2))");
+        // Expr fmap = Parser.parseExpr("if (ls) then ([f(^ls)] + fmap(f, $ls)) else
+        // ([])");
+        // Expr range = Parser.parseExpr("if (a == b - 1) then ([a]) else ([a] + range(a
+        // + 1, b))");
+
+        // HashMap<String, Atom> vars = new HashMap<>();
+
+        // ArrayList<String> fmapArgs = new ArrayList<String>(2);
+        // fmapArgs.add("f");
+        // fmapArgs.add("ls");
+        // vars.put("fmap", new Atom.Lambda(fmap, fmapArgs));
+
+        // ArrayList<String> fibArgs = new ArrayList<String>(1);
+        // fibArgs.add("n");
+        // vars.put("fib", new Atom.Lambda(fib, fibArgs));
+
+        // ArrayList<String> rangeArgs = new ArrayList<String>(1);
+        // rangeArgs.add("a");
+        // rangeArgs.add("b");
+        // vars.put("range", new Atom.Lambda(range, rangeArgs));
+
+        // System.out.println(Parser.parseExpr("fmap(fib, range(0,
+        // 15))").eval(vars).toString());
+        // }
+
+        Interpreter i = new Interpreter();
+        i.execute("5 + 12 * 3 - 2");
+        i.execute("(5 + -12) * (3 - -2)");
+
+        i.execute("let x = 5");
+        i.execute("x");
     }
 }
