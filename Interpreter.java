@@ -1,6 +1,21 @@
 import java.util.ArrayList;
 import java.util.HashMap;
 
+/**
+ * @author Mikail Khan <mikail@mikail-khan.com>
+ * @version 0.1.0
+ * 
+ *          An Atom is any discrete variable, literal or not
+ *
+ *          <p>
+ *          It's worth noting that this is a significant reason why the
+ *          interpreter is so slow; each Atom has a whole lot of space and time
+ *          overhead because of how Java stores things. Because of this
+ *          optimization is not a priority. To get around this, we could use a
+ *          bytecode interpreter which would be orders of magnitude faster but a
+ *          bit more complex.
+ *          </p>
+ */
 abstract class Atom {
     public static class Val extends Atom {
         int val;
@@ -183,6 +198,18 @@ abstract class Atom {
     }
 }
 
+/**
+ * @author Mikail Khan <mikail@mikail-khan.com>
+ * @version 0.1.0
+ * 
+ *          An expression, the AST of this language.
+ *
+ *          <p>
+ *          Because this is a functional expression based language, there are no
+ *          statements, only expressions. In other words, everything returns
+ *          something, even if it's just the unit type.
+ *          </p>
+ */
 abstract class Expr {
     abstract Atom eval(HashMap<String, Atom> variables) throws Exception;
 
@@ -397,6 +424,17 @@ enum TokenTy {
     EOF,
 }
 
+/**
+ * @author Mikail Khan <mikail@mikail-khan.com>
+ * @version 0.1.0
+ * 
+ *          A token
+ *
+ *          <p>
+ *          A token represents a basic building block of the flat structure of
+ *          the language. They're easier to work with than characters.
+ *          </p>
+ */
 class Token {
     TokenTy ty;
     String lexeme;
@@ -419,6 +457,14 @@ class Token {
     }
 }
 
+/**
+ * @author Mikail Khan <mikail@mikail-khan.com>
+ * @version 0.1.0
+ * 
+ *          The Tokenizer takes a String and turns it into a flat list of
+ *          Tokens.
+ *
+ */
 class Tokenizer {
     private String input;
     private int position;
@@ -597,6 +643,21 @@ class PrefixBindingPower {
     }
 }
 
+/**
+ * @author Mikail Khan <mikail@mikail-khan.com>
+ * @version 0.1.0
+ * 
+ *          A Parser takes a String, tokenizes it using a Tokenizer, and then
+ *          converts the flat list of tokens into a meaningful Expr AST which
+ *          can be evaluated.
+ *
+ *          <p>
+ *          https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+ *          <br>
+ *          I read this article every time I write a parser.
+ *          </p>
+ *
+ */
 class Parser {
     int position;
     ArrayList<Token> tokens;
@@ -844,6 +905,15 @@ class Parser {
     }
 }
 
+/**
+ * @author Mikail Khan <mikail@mikail-khan.com>
+ * @version 0.1.0
+ * 
+ *          Because this is an expression based language we don't need to deal
+ *          with complicated scoping and whatnot. This keeps the interpreter
+ *          very simple.
+ *
+ */
 public class Interpreter {
     HashMap<String, Atom> globals;
 
