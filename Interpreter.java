@@ -1090,12 +1090,11 @@ public class Interpreter {
 
         // small standard library
         execute("let range = fn(a, b) => if (a == b - 1) then ([a]) else ([a] + range(a + 1, b))");
-        execute("let range_to = fn(a, b) => if (a == b - 1) then ([a]) else ([a] + range(a + 1, b))");
         execute("let fmap = fn(f, ls) => if (ls) then ([f(^ls)] + fmap(f, $ls)) else ([])");
         execute("let filter = fn(f, ls) => if (ls) then (if (f(^ls)) then ([^ls] + filter(f, $ls)) else (filter(f, $ls))) else ([])");
         execute("let fold = fn(f, acc, ls) => if (ls) then (fold(f, f(acc, ^ls), $ls)) else (acc)");
         execute("let sum = fn(ls) => fold(fn (a, b) => a + b, 0, ls)");
-        execute("let product = fn(ls) => fold(fn (a, b) => a * b, 0, ls)");
+        execute("let product = fn(ls) => fold(fn (a, b) => a * b, 1, ls)");
     }
 
     public Atom eval(String expr) throws Exception {
