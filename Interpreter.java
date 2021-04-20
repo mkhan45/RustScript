@@ -98,7 +98,7 @@ abstract class Atom {
         if ((this instanceof Val) && (rhs instanceof Val)) {
             return (Atom) new Val(((Val) this).val * ((Val) rhs).val);
         } else {
-            throw new Exception("Badd");
+            throw new Exception("Bad Mul");
         }
     }
 
@@ -106,7 +106,15 @@ abstract class Atom {
         if ((this instanceof Val) && (rhs instanceof Val)) {
             return (Atom) new Val(((Val) this).val / ((Val) rhs).val);
         } else {
-            throw new Exception("Badd");
+            throw new Exception("Bad Div");
+        }
+    }
+
+    public Atom mod(Atom rhs) throws Exception {
+        if ((this instanceof Val) && (rhs instanceof Val)) {
+            return (Atom) new Val(((Val) this).val % ((Val) rhs).val);
+        } else {
+            throw new Exception("Bad Mod");
         }
     }
 
@@ -239,6 +247,7 @@ abstract class Expr {
                 case Sub -> lhs.eval(variables).sub(rhs.eval(variables));
                 case Mul -> lhs.eval(variables).mul(rhs.eval(variables));
                 case Div -> lhs.eval(variables).div(rhs.eval(variables));
+                case Mod -> lhs.eval(variables).mod(rhs.eval(variables));
                 case LT -> lhs.eval(variables).lt(rhs.eval(variables));
                 case GT -> lhs.eval(variables).gt(rhs.eval(variables));
                 case EQ -> lhs.eval(variables).eq(rhs.eval(variables));
@@ -298,6 +307,7 @@ abstract class Expr {
             Atom.Lambda lambda = ((Atom.Lambda) evaledVariables.get(this.name));
 
             ArrayList<String> argNames = lambda.argNames;
+
             if (argNames.size() != lambda.argNames.size()) {
                 throw new Exception(String.format("Expected %d arguments to call of lambda %s, got %d",
                         lambda.argNames.size(), name, variables.size()));
@@ -349,6 +359,8 @@ enum BinOp {
     Add, Sub, Mul, Div,
 
     LT, GT, EQ,
+
+    Mod,
 }
 
 enum PrefixOp {
@@ -364,7 +376,7 @@ enum TokenTy {
 
     Ident, Number,
 
-    Add, Sub, Mul, Div,
+    Add, Sub, Mul, Div, Mod,
 
     EQ, LT, GT,
 
@@ -451,7 +463,7 @@ class Tokenizer {
     private void scanIdent() {
         position -= 1;
         int start = position;
-        while (!isFinished() && Character.isAlphabetic(peek())) {
+        while (!isFinished() && (Character.isAlphabetic(peek()) || Character.isDigit(peek()))) {
             eat();
         }
 
@@ -490,6 +502,7 @@ class Tokenizer {
             case '+' -> addToken(TokenTy.Add, c);
             case '-' -> addToken(TokenTy.Sub, c);
             case '*' -> addToken(TokenTy.Mul, c);
+            case '%' -> addToken(TokenTy.Mod, c);
             case '/' -> addToken(TokenTy.Div, c);
             case '<' -> addToken(TokenTy.LT, c);
             case '>' -> addToken(TokenTy.GT, c);
@@ -543,7 +556,7 @@ class BindingPower {
                 this.left = 2;
                 this.right = 3;
             }
-            case Mul, Div -> {
+            case Mul, Div, Mod -> {
                 this.left = 4;
                 this.right = 5;
             }
@@ -732,6 +745,7 @@ class Parser {
                 case Sub -> BinOp.Sub;
                 case Mul -> BinOp.Mul;
                 case Div -> BinOp.Div;
+                case Mod -> BinOp.Mod;
                 case LT -> BinOp.LT;
                 case GT -> BinOp.GT;
                 case EQ -> BinOp.EQ;
@@ -769,8 +783,14 @@ class Parser {
 public class Interpreter {
     HashMap<String, Atom> globals;
 
-    public Interpreter() {
+    public Interpreter() throws Exception {
         globals = new HashMap<>();
+
+        // small standard library
+        execute("let range = fn(a, b) => if (a == b - 1) then ([a]) else ([a] + range(a + 1, b))");
+        execute("let fmap = fn(f, ls) => if (ls) then ([f(^ls)] + fmap(f, $ls)) else ([])");
+        execute("let filter = fn(f, ls) => if (ls) then (if (f(^ls)) then ([^ls] + filter(f, $ls)) else (filter(f, $ls))) else ([])");
+        execute("let fold = fn(f, acc, ls) => if (ls) then (fold(f, f(acc, ^ls), $ls)) else (acc)");
     }
 
     public Atom eval(String expr) throws Exception {
@@ -794,5 +814,20 @@ public class Interpreter {
 
         i.execute("let fib = fn (n) => if (n < 2) then (1) else (fib(n - 1) + fib(n - 2))");
         i.execute("fib(10)");
+
+        i.execute("range(0, 15)");
+        i.execute("range(5, 25)");
+
+        i.execute("let numbers = range(0, 20)");
+
+        i.execute("fmap(fn (n) => n * 2, numbers))");
+        i.execute("fmap(fn (n) => n % 2, numbers))");
+
+        i.execute("filter(fn (n) => n % 2 == 0, numbers)");
+
+        i.execute("fold(fn (acc, n) => acc + n, 0, range(1, 1000))");
+        i.execute("let fibstep = fn (ls) => [^$ls, ^ls + ^$ls]");
+        i.execute("let efficientfib = fn (n) => ^$fold(fibstep, [1, 1], range(0, n))");
+        i.execute("efficientfib(30)");
     }
 }
