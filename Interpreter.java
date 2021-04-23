@@ -73,6 +73,10 @@ abstract class Atom {
             this.expr = expr;
             this.argNames = argNames;
         }
+
+        public String toString() {
+            return String.format("Lambda {expr: %s, argNames: %s}", expr.toString(), argNames.toString());
+        }
     }
 
     public static class Unit extends Atom {
@@ -336,12 +340,15 @@ abstract class Expr {
             evaledVariables.putAll(variables);
 
             Atom.Lambda lambda = ((Atom.Lambda) evaledVariables.get(this.name));
+            if (lambda == null) {
+                throw new Exception(String.format("Undefined lambda '%s'", this.name));
+            }
 
             ArrayList<String> argNames = lambda.argNames;
 
-            if (argNames.size() != lambda.argNames.size()) {
+            if (this.variables.size() != lambda.argNames.size()) {
                 throw new Exception(String.format("Expected %d arguments to call of lambda %s, got %d",
-                        lambda.argNames.size(), name, variables.size()));
+                        lambda.argNames.size(), name, this.variables.size()));
             }
 
             for (int i = 0; i < argNames.size(); i += 1) {
@@ -383,6 +390,58 @@ abstract class Expr {
         public String toString() {
             return String.format("let %s = %s", lhs, rhs.toString());
         }
+    }
+
+    public static void testExpr() throws Exception {
+        // all the eval methods are mutually recursive but since it's essentially a tree
+        // instead of a potentially cyclic graph it *is* possible to test them all
+        // individually
+
+        HashMap<String, Atom> emptyScope = new HashMap<>();
+
+        AtomicExpr e1 = new AtomicExpr(new Atom.Val(1));
+        assert ((Atom.Val) e1.eval(emptyScope)).val == 1;
+
+        HashMap<String, Atom> piScope = new HashMap<>();
+        piScope.put("pi", new Atom.Val(3));
+        AtomicExpr e2 = new AtomicExpr(new Atom.Ident("pi"));
+        assert ((Atom.Val) e2.eval(piScope)).val == 3;
+
+        PrefixExpr e3 = new PrefixExpr(PrefixOp.Negate, new AtomicExpr(new Atom.Val(3)));
+        assert ((Atom.Val) e3.eval(emptyScope)).val == -3;
+
+        BinaryExpr e4 = new BinaryExpr(BinOp.Add, new Atom.Val(10), new Atom.Val(20));
+        assert ((Atom.Val) e4.eval(emptyScope)).val == 30;
+
+        IfExpr e5 = new IfExpr(new AtomicExpr(new Atom.Bool(false)), new AtomicExpr(new Atom.Val(10)),
+                new AtomicExpr(new Atom.Val(20)));
+        assert ((Atom.Val) e5.eval(emptyScope)).val == 20;
+
+        IfExpr e6 = new IfExpr(new AtomicExpr(new Atom.Bool(true)), new AtomicExpr(new Atom.Val(10)),
+                new AtomicExpr(new Atom.Val(20)));
+        assert ((Atom.Val) e6.eval(emptyScope)).val == 10;
+
+        HashMap<String, Atom> lambdaScope = new HashMap<>();
+
+        AtomicExpr fib = (AtomicExpr) Parser.parseExpr("fn (n) => if (n < 2) then (1) else (fib(n - 1) + fib(n - 2))");
+        AtomicExpr add = (AtomicExpr) Parser.parseExpr("fn (start, end) => start + end");
+
+        lambdaScope.put("fib", fib.val);
+        lambdaScope.put("add", add.val);
+
+        LambdaCall e7 = (LambdaCall) Parser.parseExpr("fib(10)");
+        LambdaCall e8 = (LambdaCall) Parser.parseExpr("add(5, 10)");
+        assert ((Atom.Val) e7.eval(lambdaScope)).val == 89;
+        assert ((Atom.Val) e8.eval(lambdaScope)).val == 15;
+
+        HashMap<String, Atom> newScope = new HashMap<>();
+
+        AssignExpr e9 = (AssignExpr) Parser.parseExpr("let x = 15");
+        e9.eval(newScope);
+        assert ((Atom.Val) newScope.get("x")).val == 15;
+        AssignExpr e10 = (AssignExpr) Parser.parseExpr("let x = x * x");
+        e10.eval(newScope);
+        assert ((Atom.Val) newScope.get("x")).val == 15 * 15;
     }
 }
 
@@ -1047,6 +1106,16 @@ class Parser {
             Parser p = new Parser(tokens);
             Expr.AtomicExpr expr = (Expr.AtomicExpr) p.parseList();
             assert expr.toString().equals("[1, 3, 2, 4]");
+
+            ArrayList<Token> tokensRange = Tokenizer.tokenize("0..10]");
+            Parser parserRange = new Parser(tokensRange);
+            Expr.LambdaCall exprRange = (Expr.LambdaCall) parserRange.parseList();
+            assert exprRange.toString().equals("range([0, 10])");
+
+            ArrayList<Token> tokensComp = Tokenizer.tokenize("x * 2 for x in [2..5]]");
+            Parser parserComp = new Parser(tokensComp);
+            Expr.LambdaCall exprComp = (Expr.LambdaCall) parserComp.parseList();
+            assert exprComp.toString().equals("fmap([Lambda {expr: Mul, (\"x\", 2), argNames: [x]}, range([2, 5])])");
         }
 
         {
@@ -1111,6 +1180,7 @@ public class Interpreter {
     public static void main(String[] args) throws Exception {
         Tokenizer.testTokenizer();
         Parser.testParser();
+        Expr.testExpr();
 
         // Some full stack tests
         //
@@ -1173,7 +1243,7 @@ public class Interpreter {
         assert ((Atom.Val) val11).val == 499500;
         assert ((Atom.Val) val11).val == ((Atom.Val) val12).val;
 
-        i.eval("let fib_step = fn (ls) => [^$ls, ^ls + ^$ls]");
+        i.eval("let fib_step = fn (ls, i) => [^$ls, ^ls + ^$ls]");
         i.eval("let efficient_fib = fn (n) => ^$fold(fib_step, [1, 1], [0..n])");
         Atom val13 = i.eval("efficient_fib(30)");
 
