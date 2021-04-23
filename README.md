@@ -1,5 +1,5 @@
 # RustScript
-RustScript is a scripting language with no relation to Rust
+RustScript is a scripting language as much relation to Rust as JavaScript has to Java
 
 ___
 
