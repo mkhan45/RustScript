@@ -963,14 +963,28 @@ class Parser {
 
                 ArrayList<String> argNames = new ArrayList<>();
                 argNames.add(name);
-                Atom lambda = new Atom.Lambda(first, argNames);
+                Atom mapLambda = new Atom.Lambda(first, argNames);
 
                 ArrayList<Expr> args = new ArrayList<>(2);
-                args.add(new Expr.AtomicExpr(lambda));
+                args.add(new Expr.AtomicExpr(mapLambda));
                 args.add(list);
 
-                assertNext(TokenTy.RBracket);
-                return new Expr.LambdaCall("fmap", args);
+                Expr fmap = new Expr.LambdaCall("fmap", args);
+
+				if (expect(TokenTy.If)) {
+					Expr cond = exprBP(0);
+					Atom filterLambda = new Atom.Lambda(cond, argNames);
+
+					ArrayList<Expr> filterArgs = new ArrayList<>(2);
+					filterArgs.add(new Expr.AtomicExpr(filterLambda));
+					filterArgs.add(fmap);
+
+					assertNext(TokenTy.RBracket);
+					return new Expr.LambdaCall("filter", filterArgs);
+				} else {
+					assertNext(TokenTy.RBracket);
+					return fmap;
+				}
             } else if (peek().ty == TokenTy.DotDot) {
                 // range literal
                 assertNext(TokenTy.DotDot);
