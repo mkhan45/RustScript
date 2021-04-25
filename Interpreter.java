@@ -200,6 +200,26 @@ abstract class Atom {
             throw new Exception(String.format("Can't coerce %s to a boolean", this.toString()));
         }
     }
+
+    public Atom and(Atom rhs) throws Exception {
+        if (this instanceof Bool && rhs instanceof Bool) {
+        Bool lhs = (Bool) this;
+        Bool other = (Bool) rhs;
+            return new Bool(lhs.val && other.val);
+        } else {
+            throw new Exception(String.format("Can't coerce %s to a boolean", this.toString()));
+        }
+    }
+
+    public Atom or(Atom rhs) throws Exception {
+        if (this instanceof Bool && rhs instanceof Bool) {
+        Bool lhs = (Bool) this;
+        Bool other = (Bool) rhs;
+            return new Bool(lhs.val || other.val);
+        } else {
+            throw new Exception(String.format("Can't coerce %s to a boolean", this.toString()));
+        }
+    }
 }
 
 /**
@@ -286,6 +306,8 @@ abstract class Expr {
                 case LT -> lhs.eval(variables).lt(rhs.eval(variables));
                 case GT -> lhs.eval(variables).gt(rhs.eval(variables));
                 case EQ -> lhs.eval(variables).eq(rhs.eval(variables));
+                case And -> lhs.eval(variables).and(rhs.eval(variables));
+                case Or -> lhs.eval(variables).or(rhs.eval(variables));
             };
         }
 
@@ -450,6 +472,8 @@ enum BinOp {
 
     LT, GT, EQ,
 
+    And, Or,
+
     Mod,
 }
 
@@ -469,6 +493,8 @@ enum TokenTy {
     Add, Sub, Mul, Div, Mod,
 
     EQ, LT, GT,
+
+    And, Or,
 
     If, Then, Else,
 
@@ -619,6 +645,20 @@ class Tokenizer {
             case ',' -> addToken(TokenTy.Comma, c);
             case '^' -> addToken(TokenTy.Caret, c);
             case '$' -> addToken(TokenTy.Dollar, c);
+            case '|' -> {
+                if (expect('|')) {
+                    addToken(TokenTy.Or, "||");
+                } else {
+                    throw new Exception("Found a single '|', did you mean '||'?");
+                }
+            }
+            case '&' -> {
+                if (expect('&')) {
+                    addToken(TokenTy.And, "&&");
+                } else {
+                    throw new Exception("Found a single '&', did you mean '&&'?");
+                }
+            }
             case '.' -> {
                 if (expect('.')) {
                     addToken(TokenTy.DotDot, "..");
@@ -798,14 +838,18 @@ class BindingPower {
     public BindingPower(BinOp op) {
         switch (op) {
             case Add, Sub -> {
-                this.left = 2;
-                this.right = 3;
-            }
-            case Mul, Div, Mod -> {
                 this.left = 4;
                 this.right = 5;
             }
+            case Mul, Div, Mod -> {
+                this.left = 6;
+                this.right = 7;
+            }
             case LT, GT, EQ -> {
+                this.left = 2;
+                this.right = 3;
+            }
+            case And, Or -> {
                 this.left = 0;
                 this.right = 1;
             }
@@ -1056,6 +1100,8 @@ class Parser {
                 case LT -> BinOp.LT;
                 case GT -> BinOp.GT;
                 case EQ -> BinOp.EQ;
+                case And -> BinOp.And;
+                case Or -> BinOp.Or;
                 default -> null;
             };
 
