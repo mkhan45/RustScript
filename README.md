@@ -128,9 +128,10 @@ A few project euler problems
 
 
 ```hs
-let fib = fn (n) => ^$fold(fn (ls, i) => [^$ls, ^ls + ^$ls], [1, 1], [0..n])
-let even_fibs = [fib(n) for n in [1..35]]
-sum([f for f in even_fibs if f < 4000000 && f % 2 == 0])
+> let fib = fn (n) => ^$fold(fn (ls, i) => [^$ls, ^ls + ^$ls], [1, 1], [0..n])
+> let fibs = [fib(n) for n in [1..35]]
+> sum([f for f in fibs if f < 4000000 && f % 2 == 0])
+4613732
 ```
 
 #### Problem 3
@@ -153,9 +154,10 @@ It's worth noting that `factor` doubles as `is_prime`, since it returns false fo
 > What is the smallest positive number that is evenly divisible by all of the numbers from 1 to 20?
 
 ```hs
-let gcd = fn (a, b) => if (b == 0)  then (a) else (gcd(b, (a % b)))
-let lcm = fn (a, b) => (a * b) / (gcd(a, b))
-fold(lcm, 1, [1..20])
+> let gcd = fn (a, b) => if (b == 0)  then (a) else (gcd(b, (a % b)))
+> let lcm = fn (a, b) => (a * b) / (gcd(a, b))
+> fold(lcm, 1, [1..20])
+232792560
 ```
 
 #### Problem 6
