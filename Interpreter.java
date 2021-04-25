@@ -203,8 +203,8 @@ abstract class Atom {
 
     public Atom and(Atom rhs) throws Exception {
         if (this instanceof Bool && rhs instanceof Bool) {
-        Bool lhs = (Bool) this;
-        Bool other = (Bool) rhs;
+            Bool lhs = (Bool) this;
+            Bool other = (Bool) rhs;
             return new Bool(lhs.val && other.val);
         } else {
             throw new Exception(String.format("Can't coerce %s to a boolean", this.toString()));
@@ -213,8 +213,8 @@ abstract class Atom {
 
     public Atom or(Atom rhs) throws Exception {
         if (this instanceof Bool && rhs instanceof Bool) {
-        Bool lhs = (Bool) this;
-        Bool other = (Bool) rhs;
+            Bool lhs = (Bool) this;
+            Bool other = (Bool) rhs;
             return new Bool(lhs.val || other.val);
         } else {
             throw new Exception(String.format("Can't coerce %s to a boolean", this.toString()));
@@ -488,7 +488,7 @@ enum TokenTy {
 
     LBracket, RBracket,
 
-    Ident, Number,
+    Ident, Number, True, False,
 
     Add, Sub, Mul, Div, Mod,
 
@@ -613,6 +613,8 @@ class Tokenizer {
             case "fn" -> addToken(new Token(TokenTy.Fn, lexeme));
             case "for" -> addToken(new Token(TokenTy.For, lexeme));
             case "in" -> addToken(new Token(TokenTy.In, lexeme));
+            case "true" -> addToken(new Token(TokenTy.True, lexeme));
+            case "false" -> addToken(new Token(TokenTy.False, lexeme));
             default -> addToken(new Token(TokenTy.Ident, lexeme));
         }
     }
@@ -971,20 +973,20 @@ class Parser {
 
                 Expr fmap = new Expr.LambdaCall("fmap", args);
 
-				if (expect(TokenTy.If)) {
-					Expr cond = exprBP(0);
-					Atom filterLambda = new Atom.Lambda(cond, argNames);
+                if (expect(TokenTy.If)) {
+                    Expr cond = exprBP(0);
+                    Atom filterLambda = new Atom.Lambda(cond, argNames);
 
-					ArrayList<Expr> filterArgs = new ArrayList<>(2);
-					filterArgs.add(new Expr.AtomicExpr(filterLambda));
-					filterArgs.add(fmap);
+                    ArrayList<Expr> filterArgs = new ArrayList<>(2);
+                    filterArgs.add(new Expr.AtomicExpr(filterLambda));
+                    filterArgs.add(fmap);
 
-					assertNext(TokenTy.RBracket);
-					return new Expr.LambdaCall("filter", filterArgs);
-				} else {
-					assertNext(TokenTy.RBracket);
-					return fmap;
-				}
+                    assertNext(TokenTy.RBracket);
+                    return new Expr.LambdaCall("filter", filterArgs);
+                } else {
+                    assertNext(TokenTy.RBracket);
+                    return fmap;
+                }
             } else if (peek().ty == TokenTy.DotDot) {
                 // range literal
                 assertNext(TokenTy.DotDot);
@@ -1070,6 +1072,8 @@ class Parser {
     private Expr exprBP(int minBP) throws Exception {
         Token nx = eat();
         Expr lhs = switch (nx.ty) {
+            case True -> new Expr.AtomicExpr(new Atom.Bool(true));
+            case False -> new Expr.AtomicExpr(new Atom.Bool(false));
             case Number -> new Expr.AtomicExpr(new Atom.Val(Integer.parseInt(nx.lexeme)));
             case Ident -> {
                 if (peek().ty == TokenTy.LParen) {
