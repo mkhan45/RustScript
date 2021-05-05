@@ -156,7 +156,11 @@ abstract class Atom {
     public Atom eq(Atom rhs) throws Exception {
         if ((this instanceof Val) && (rhs instanceof Val)) {
             return (Atom) new Bool(((Val) this).val == ((Val) rhs).val);
-        } else {
+        }
+        else if (this instanceof Bool || rhs instanceof Bool) {
+            return (Atom) new Bool(this.isTruthy() == rhs.isTruthy());
+        }
+        else {
             throw new Exception("Bad Cmp");
         }
     }
