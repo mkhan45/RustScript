@@ -40,6 +40,18 @@ abstract class Atom {
             return String.valueOf(val);
         }
     }
+    
+    public static class Char extends Atom {
+    	char val;
+    	
+    	public Char(char val) {
+            this.val = val;
+        }
+
+        public String toString() {
+            return String.valueOf(val);
+        }
+    }
 
     public static class List extends Atom {
         ArrayList<Expr> list;
@@ -497,7 +509,7 @@ enum TokenTy {
 
     LBracket, RBracket,
 
-    Ident, Number, True, False,
+    Ident, Number, Character, True, False,
 
     Add, Sub, Mul, Div, Mod,
 
@@ -637,6 +649,63 @@ class Tokenizer {
         String lexeme = input.substring(start, position);
         addToken(new Token(TokenTy.Number, lexeme));
     }
+    
+    private static boolean isHex(char c) {
+		return Character.isDigit(c) || (c >= 'A' && c <= 'F');
+	}
+    private static boolean isHex(String s) {
+    	for(int i = 0; i < s.length(); i++) {
+    		if (!isHex(s.charAt(i))) return false;
+    	}
+    	return true;
+    }
+    
+    private String unescaper(String sequence) {
+    	// TODO: Implement unescaper for:		https://en.wikipedia.org/wiki/Escape_character
+    	// 			* Octal (\1 to \377)
+    	// 			* Unicode: 					https://en.wikipedia.org/wiki/List_of_Unicode_characters	https://www.rapidtables.com/code/text/unicode-characters.html
+    	// 			* Control characters: 		https://en.wikipedia.org/wiki/Control_character
+    	// 			* Whitespace characters: 	https://en.wikipedia.org/wiki/Whitespace_character
+    	String result = "";
+    	for(int p = 0; p < sequence.length(); p++) {
+    		char c = sequence.charAt(p);
+    		if (c == '\\') {
+    			p++;
+	    		String remaining = sequence.substring(p);
+	    		if (remaining.length() >= 5 && remaining.charAt(0) == 'u' && isHex(remaining.substring(1, 5))) {
+	    			char unicodeChar = (char)Integer.parseInt(remaining.substring(1, 5), 16);
+	    			result += unicodeChar;
+	    			p += 4; // p will increment before next iteration
+	    		}
+	    		else {
+	    			result += remaining.charAt(0);
+	    		}
+    		}
+    		else result += c;
+    	}
+    	return result;
+    }
+    
+    private void scanCharacter() throws Exception {
+    	expect('\''); // Will always match
+    	int start = position;
+    	boolean escaped;
+    	while (!isFinished() && peek() != '\'') {
+    		escaped = peek() == '\\';
+            eat();
+            if (escaped && (peek() == '\'' || peek() == '\\')) eat(); // eat escaped apostrophes or backslashes
+        }
+    	if (start == position) throw new Exception("Missing character, '' is not valid.");
+        String lexeme = input.substring(start, position);
+    	if (!isFinished() && peek() == '\'') eat();
+    	else throw new Exception("Found character with a missing closing apostrophe, did you mean '" + lexeme + "'?");
+    	
+    	String characters = unescaper(lexeme);
+    	if (characters.length() > 1) throw new Exception("Found invalid character '" + characters + "', did you mean '" + characters.charAt(0) + "'?");
+    	char character = characters.charAt(0);
+
+    	addToken(new Token(TokenTy.Character, "" + character));
+    }
 
     private void addNextToken() throws Exception {
         char c = eat();
@@ -693,6 +762,9 @@ class Tokenizer {
                 } else if (Character.isDigit(c)) {
                     position -= 1;
                     scanNumber();
+                } else if (c == '\'') {
+                    position -= 1;
+                    scanCharacter();
                 } else {
                     throw new Exception(String.format("Unexpected character: %c", c));
                 }
@@ -1092,6 +1164,7 @@ class Parser {
                     yield new Expr.AtomicExpr(new Atom.Ident(nx.lexeme));
                 }
             }
+            case Character -> new Expr.AtomicExpr(new Atom.Char(nx.lexeme.charAt(0)));
             case Let -> parseLetExpr();
             case Fn -> parseLambdaExpr();
             case If -> parseIfExpr();
