@@ -166,10 +166,15 @@ abstract class Atom {
     }
 
     public Atom negate() throws Exception {
-        if (this instanceof Val) {
+    	if (this instanceof Val) {
             Val v = (Val) this;
             return (Atom) new Val(-v.val);
-        } else {
+        }
+    	else if (this instanceof Bool) {
+            Bool b = (Bool) this;
+            return (Atom) new Bool(!b.val);
+        }
+    	else {
             throw new Exception("Bad Negate");
         }
     }
