@@ -49,7 +49,7 @@ abstract class Atom {
         }
 
         public String toString() {
-            return String.valueOf(val);
+            return '\'' + String.valueOf(val) + '\'';
         }
     }
 
@@ -59,9 +59,40 @@ abstract class Atom {
         public List(ArrayList<Expr> list) {
             this.list = list;
         }
+        
+        private boolean isCharArray() {
+        	for(int i = 0; i < list.size(); i++) {
+        		Expr e = list.get(i);
+        		if (!(e instanceof Expr.AtomicExpr && ((Expr.AtomicExpr)e).val instanceof Atom.Char)) return false;
+        	}
+        	return true;
+        }
+        private String formatAsString() {
+        	assert isCharArray();
+        	String result = "\"";
+        	for(int i = 0; i < list.size(); i++) {
+        		result += ((Atom.Char)((Expr.AtomicExpr)list.get(i)).val).val;
+        	}
+        	return result + '"';
+        }
 
         public String toString() {
+        	if (isCharArray()) return formatAsString();
             return list.toString();
+        }
+    }
+    
+    public static class Str extends List {
+    	private static ArrayList<Expr> split(String val) {
+    		ArrayList<Expr> list = new ArrayList<Expr>();
+    		for(int i = 0; i < val.length(); i++) {
+    			list.add(new Expr.AtomicExpr(new Atom.Char(val.charAt(i))));
+    		}
+    		return list;
+    	}
+    	
+    	public Str(String val) {
+    		super(split(val));
         }
     }
 
@@ -509,7 +540,7 @@ enum TokenTy {
 
     LBracket, RBracket,
 
-    Ident, Number, Character, True, False,
+    Ident, Number, Character, String, True, False,
 
     Add, Sub, Mul, Div, Mod,
 
@@ -701,10 +732,28 @@ class Tokenizer {
     	else throw new Exception("Found character with a missing closing apostrophe, did you mean '" + lexeme + "'?");
     	
     	String characters = unescaper(lexeme);
-    	if (characters.length() > 1) throw new Exception("Found invalid character '" + characters + "', did you mean '" + characters.charAt(0) + "'?");
+    	if (characters.length() > 1) throw new Exception("Found invalid character, did you mean \"" + characters + "\"?");
     	char character = characters.charAt(0);
 
     	addToken(new Token(TokenTy.Character, "" + character));
+    }
+    
+    private void scanString() throws Exception {
+    	expect('"'); // Will always match
+    	int start = position;
+    	boolean escaped;
+    	while (!isFinished() && peek() != '"') {
+    		escaped = peek() == '\\';
+            eat();
+            if (escaped && (peek() == '\"' || peek() == '\\')) eat(); // eat escaped apostrophes or backslashes
+        }
+        String lexeme = input.substring(start, position);
+    	if (!isFinished() && peek() == '"') eat();
+    	else throw new Exception("Found string with a missing closing quotation mark, did you mean \"" + lexeme + "\"?");
+    	
+    	String string = unescaper(lexeme);
+
+    	addToken(new Token(TokenTy.String, string));
     }
 
     private void addNextToken() throws Exception {
@@ -765,6 +814,9 @@ class Tokenizer {
                 } else if (c == '\'') {
                     position -= 1;
                     scanCharacter();
+                }else if (c == '"') {
+                    position -= 1;
+                    scanString();
                 } else {
                     throw new Exception(String.format("Unexpected character: %c", c));
                 }
@@ -1165,6 +1217,7 @@ class Parser {
                 }
             }
             case Character -> new Expr.AtomicExpr(new Atom.Char(nx.lexeme.charAt(0)));
+            case String -> new Expr.AtomicExpr(new Atom.Str(nx.lexeme));
             case Let -> parseLetExpr();
             case Fn -> parseLambdaExpr();
             case If -> parseIfExpr();
