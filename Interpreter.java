@@ -1363,6 +1363,7 @@ public class Interpreter {
         execute("let fold = fn(f, acc, ls) => if (ls) then (fold(f, f(acc, ^ls), $ls)) else (acc)");
         execute("let sum = fn(ls) => fold(fn (a, b) => a + b, 0, ls)");
         execute("let product = fn(ls) => fold(fn (a, b) => a * b, 1, ls)");
+        execute("let reverse = fn(ls) => fold(fn (rs, el) => [el] + rs, [], ls)");
     }
 
     public Atom eval(String expr) throws Exception {
