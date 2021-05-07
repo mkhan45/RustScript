@@ -295,11 +295,11 @@ abstract class Expr {
         Atom eval(HashMap<String, Atom> variables) throws Exception {
             if (val instanceof Atom.Ident) {
                 Atom.Ident v = (Atom.Ident) val;
-                try {
-                    return variables.get(v.name);
-                } catch (Exception e) {
+                var res = variables.get(v.name);
+                if (res == null) {
                     throw new Exception(String.format("Tried to access nonexistent variable %s", v.name));
                 }
+                return res;
             } else if (val instanceof Atom.List) {
                 Atom.List ls = (Atom.List) val;
                 ArrayList<Expr> nls = new ArrayList<>();
