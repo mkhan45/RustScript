@@ -40,6 +40,18 @@ abstract class Atom {
             return String.valueOf(val);
         }
     }
+    
+    public static class Char extends Atom {
+    	char val;
+    	
+    	public Char(char val) {
+            this.val = val;
+        }
+
+        public String toString() {
+            return '\'' + String.valueOf(val) + '\'';
+        }
+    }
 
     public static class List extends Atom {
         ArrayList<Expr> list;
@@ -47,9 +59,40 @@ abstract class Atom {
         public List(ArrayList<Expr> list) {
             this.list = list;
         }
+        
+        private boolean isCharArray() {
+        	for(int i = 0; i < list.size(); i++) {
+        		Expr e = list.get(i);
+        		if (!(e instanceof Expr.AtomicExpr && ((Expr.AtomicExpr)e).val instanceof Atom.Char)) return false;
+        	}
+        	return true;
+        }
+        private String formatAsString() {
+        	assert isCharArray();
+        	String result = "\"";
+        	for(int i = 0; i < list.size(); i++) {
+        		result += ((Atom.Char)((Expr.AtomicExpr)list.get(i)).val).val;
+        	}
+        	return result + '"';
+        }
 
         public String toString() {
+        	if (isCharArray()) return formatAsString();
             return list.toString();
+        }
+    }
+    
+    public static class Str extends List {
+    	private static ArrayList<Expr> split(String val) {
+    		ArrayList<Expr> list = new ArrayList<Expr>();
+    		for(int i = 0; i < val.length(); i++) {
+    			list.add(new Expr.AtomicExpr(new Atom.Char(val.charAt(i))));
+    		}
+    		return list;
+    	}
+    	
+    	public Str(String val) {
+    		super(split(val));
         }
     }
 
@@ -156,16 +199,25 @@ abstract class Atom {
     public Atom eq(Atom rhs) throws Exception {
         if ((this instanceof Val) && (rhs instanceof Val)) {
             return (Atom) new Bool(((Val) this).val == ((Val) rhs).val);
-        } else {
+        }
+        else if (this instanceof Bool || rhs instanceof Bool) {
+            return (Atom) new Bool(this.isTruthy() == rhs.isTruthy());
+        }
+        else {
             throw new Exception("Bad Cmp");
         }
     }
 
     public Atom negate() throws Exception {
-        if (this instanceof Val) {
+    	if (this instanceof Val) {
             Val v = (Val) this;
             return (Atom) new Val(-v.val);
-        } else {
+        }
+    	else if (this instanceof Bool) {
+            Bool b = (Bool) this;
+            return (Atom) new Bool(!b.val);
+        }
+    	else {
             throw new Exception("Bad Negate");
         }
     }
@@ -243,11 +295,11 @@ abstract class Expr {
         Atom eval(HashMap<String, Atom> variables) throws Exception {
             if (val instanceof Atom.Ident) {
                 Atom.Ident v = (Atom.Ident) val;
-                try {
-                    return variables.get(v.name);
-                } catch (Exception e) {
+                var res = variables.get(v.name);
+                if (res == null) {
                     throw new Exception(String.format("Tried to access nonexistent variable %s", v.name));
                 }
+                return res;
             } else if (val instanceof Atom.List) {
                 Atom.List ls = (Atom.List) val;
                 ArrayList<Expr> nls = new ArrayList<>();
@@ -488,7 +540,7 @@ enum TokenTy {
 
     LBracket, RBracket,
 
-    Ident, Number, True, False,
+    Ident, Number, Character, String, True, False,
 
     Add, Sub, Mul, Div, Mod,
 
@@ -628,6 +680,81 @@ class Tokenizer {
         String lexeme = input.substring(start, position);
         addToken(new Token(TokenTy.Number, lexeme));
     }
+    
+    private static boolean isHex(char c) {
+		return Character.isDigit(c) || (c >= 'A' && c <= 'F');
+	}
+    private static boolean isHex(String s) {
+    	for(int i = 0; i < s.length(); i++) {
+    		if (!isHex(s.charAt(i))) return false;
+    	}
+    	return true;
+    }
+    
+    private String unescaper(String sequence) {
+    	// TODO: Implement unescaper for:		https://en.wikipedia.org/wiki/Escape_character
+    	// 			* Octal (\1 to \377)
+    	// 			* Unicode: 					https://en.wikipedia.org/wiki/List_of_Unicode_characters	https://www.rapidtables.com/code/text/unicode-characters.html
+    	// 			* Control characters: 		https://en.wikipedia.org/wiki/Control_character
+    	// 			* Whitespace characters: 	https://en.wikipedia.org/wiki/Whitespace_character
+    	String result = "";
+    	for(int p = 0; p < sequence.length(); p++) {
+    		char c = sequence.charAt(p);
+    		if (c == '\\') {
+    			p++;
+	    		String remaining = sequence.substring(p);
+	    		if (remaining.length() >= 5 && remaining.charAt(0) == 'u' && isHex(remaining.substring(1, 5))) {
+	    			char unicodeChar = (char)Integer.parseInt(remaining.substring(1, 5), 16);
+	    			result += unicodeChar;
+	    			p += 4; // p will increment before next iteration
+	    		}
+	    		else {
+	    			result += remaining.charAt(0);
+	    		}
+    		}
+    		else result += c;
+    	}
+    	return result;
+    }
+    
+    private void scanCharacter() throws Exception {
+    	expect('\''); // Will always match
+    	int start = position;
+    	boolean escaped;
+    	while (!isFinished() && peek() != '\'') {
+    		escaped = peek() == '\\';
+            eat();
+            if (escaped && (peek() == '\'' || peek() == '\\')) eat(); // eat escaped apostrophes or backslashes
+        }
+    	if (start == position) throw new Exception("Missing character, '' is not valid.");
+        String lexeme = input.substring(start, position);
+    	if (!isFinished() && peek() == '\'') eat();
+    	else throw new Exception("Found character with a missing closing apostrophe, did you mean '" + lexeme + "'?");
+    	
+    	String characters = unescaper(lexeme);
+    	if (characters.length() > 1) throw new Exception("Found invalid character, did you mean \"" + characters + "\"?");
+    	char character = characters.charAt(0);
+
+    	addToken(new Token(TokenTy.Character, "" + character));
+    }
+    
+    private void scanString() throws Exception {
+    	expect('"'); // Will always match
+    	int start = position;
+    	boolean escaped;
+    	while (!isFinished() && peek() != '"') {
+    		escaped = peek() == '\\';
+            eat();
+            if (escaped && (peek() == '\"' || peek() == '\\')) eat(); // eat escaped apostrophes or backslashes
+        }
+        String lexeme = input.substring(start, position);
+    	if (!isFinished() && peek() == '"') eat();
+    	else throw new Exception("Found string with a missing closing quotation mark, did you mean \"" + lexeme + "\"?");
+    	
+    	String string = unescaper(lexeme);
+
+    	addToken(new Token(TokenTy.String, string));
+    }
 
     private void addNextToken() throws Exception {
         char c = eat();
@@ -684,6 +811,12 @@ class Tokenizer {
                 } else if (Character.isDigit(c)) {
                     position -= 1;
                     scanNumber();
+                } else if (c == '\'') {
+                    position -= 1;
+                    scanCharacter();
+                }else if (c == '"') {
+                    position -= 1;
+                    scanString();
                 } else {
                     throw new Exception(String.format("Unexpected character: %c", c));
                 }
@@ -1083,6 +1216,8 @@ class Parser {
                     yield new Expr.AtomicExpr(new Atom.Ident(nx.lexeme));
                 }
             }
+            case Character -> new Expr.AtomicExpr(new Atom.Char(nx.lexeme.charAt(0)));
+            case String -> new Expr.AtomicExpr(new Atom.Str(nx.lexeme));
             case Let -> parseLetExpr();
             case Fn -> parseLambdaExpr();
             case If -> parseIfExpr();
@@ -1228,6 +1363,7 @@ public class Interpreter {
         execute("let fold = fn(f, acc, ls) => if (ls) then (fold(f, f(acc, ^ls), $ls)) else (acc)");
         execute("let sum = fn(ls) => fold(fn (a, b) => a + b, 0, ls)");
         execute("let product = fn(ls) => fold(fn (a, b) => a * b, 1, ls)");
+        execute("let reverse = fn(ls) => fold(fn (rs, el) => [el] + rs, [], ls)");
     }
 
     public Atom eval(String expr) throws Exception {
