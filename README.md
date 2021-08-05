@@ -1,6 +1,8 @@
 # RustScript
 RustScript is a scripting language as much relation to Rust as JavaScript has to Java
 
+See a more complete version of this project at <https://github.com/WilliamRagstad/RustScript>
+
 ___
 
 I made this for a school project; it's meant to be implemented into a messaging app as a chat bot so everything should be a one liner. 
